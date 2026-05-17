@@ -1,0 +1,64 @@
+1---
+- name: Install and configure Observe Agent on RHEL servers
+  hosts: all
+  become: true
+
+  vars:
+    observe_token: "Replace_was"
+    observe_url: "https://00000.collect.observeinc.com/"
+
+  tasks:
+    - name: Add Observe Gemfury yum repo
+      copy:
+        dest: /etc/yum.repos.d/fury.repo
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [fury]
+          name=Gemfury Private Repo
+          baseurl=https://yum.fury.io/observeinc/
+          enabled=1
+          gpgcheck=0
+
+    - name: Install Observe Agent using only Fury repo
+      yum:
+        name: observe-agent
+        state: present
+        disablerepo: "*"
+        enablerepo: "fury"
+
+    - name: Configure Observe Agent
+      command: >
+        observe-agent init-config
+        --token {{ observe_token }}
+        --observe_url {{ observe_url }}
+        --forwarding::metrics::output_format=otel
+        --application::RED_metrics::enabled=true
+        --self_monitoring::enabled=true
+        --self_monitoring::fleet::enabled=true
+        --host_monitoring::enabled=true
+        --host_monitoring::logs::enabled=true
+        --host_monitoring::metrics::host::enabled=true
+        --host_monitoring::metrics::process::enabled=false
+      no_log: true
+
+    - name: Restart and enable Observe Agent
+      systemd:
+        name: observe-agent
+        enabled: true
+        state: restarted
+
+    - name: Wait for agent to initialize
+      pause:
+        seconds: 10
+
+    - name: Check Observe Agent status
+      command: observe-agent status
+      register: observe_status
+      changed_when: false
+
+    - name: Show Observe Agent status
+      debug:
+        var: observe_status.stdout_lines
+
